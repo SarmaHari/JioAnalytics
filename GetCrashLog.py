@@ -101,7 +101,7 @@ def get_stb_ver(dirpath): #Get STB version from the list of ALL files in the dir
                 reqstr='Current version  of STB:'
                 mbuildver=input_line[input_line.find(reqstr)+len(reqstr)+1:len(input_line)]
                 #print("mbuildver=%s" %(mbuildver))
-    return(mbuildver.replace(',','!').replace('\n','!')) # Remove this replacement before inserting into ES
+    #return(mbuildver.replace(',','!').replace('\n','!')) # Remove this replacement before inserting into ES
     return(mbuildver) 
 
 def process_logs(locdir,mstbid):
@@ -274,7 +274,7 @@ def process_dropbox_logs(locdir,mstbid):
             
             coln=input_line[0:input_line.find(':')]
             colv=input_line[input_line.find(':')+2:len(input_line)]
-            #print("Coln:%s,ColV:%s>" %(coln,colv))
+            #print("--->Coln:%s,ColV:%s>" %(coln,colv))
             if(coln == 'Package' or coln == "Subject"):
                 mpackage = colv
             elif(coln == 'PID'):
@@ -291,14 +291,17 @@ def process_dropbox_logs(locdir,mstbid):
                 continue
         #Processing one File is over. Write to csv
         try:
-            crstr="%s,%s,%s,%s,%s,%s,%s,%s,%s\n" %(mstbid,"NA",mpid.replace('\n',''),mprocess.replace('\n',''),mflags.replace('\n',''),mpackage.replace('\n',''),mforeground.replace('\n',''),mbuildver.replace('\n','!'),mcrashtrace.replace(',','!').replace('\n','!'))
+            crstr="%s,%s,%s,%s,%s,%s,%s,%s,%s\n" %(mstbid,"NA",mpid.replace('\n',''),mprocess.replace('\n',''),mflags.replace('\n',''),mpackage.replace('\n',''),mforeground.replace('\n',''),mbuildver.replace('\n','!'),mcrashtrace.replace(',','!').replace('\n','!').replace('ˈ','#'))
             outcrfcsv.write(crstr)
             outcrfcsv.flush()
+        
         except Exception as e:
+            print("%s:In Exception of Dropbox printing" %(mstbid))
             crstr="%s,%s,%s,%s,%s,%s,%s,%s,%s\n" %(mstbid,"NA",mpid.replace('\n','!').encode('utf-8'),mprocess.replace('\n','!').encode('utf-8'),mflags.replace('\n','!').encode('utf-8'),mpackage.replace('\n','').encode('utf-8'),mforeground.replace('\n','').encode('utf-8'),mbuildver.replace('\n','').encode('utf-8'),mcrashtrace.replace(',','!').replace('\n','!').encode('utf-8'))
             outcrfcsv.write(crstr)
             outcrfcsv.flush()
             continue
+           
         inpf.close()
     return
     
