@@ -19,6 +19,7 @@ from math import ceil
 from elasticsearch import Elasticsearch
 import shutil
 import glob,os
+import io
 
 
 def check_es_index(): #Connect to ES, check if indexes exist, if not create, return ES point
@@ -212,7 +213,7 @@ def process_logs(locdir,mstbid):
             tag = ""
             message = ""
             tag,message = get_tag_n_message(reststr)
-            outstr="%s,%s,%s,%s,%s,%s,%s\n" %(mstbid,Time,pid,tid,priority,tag.replace(',','!'),message.replace(',','!').replace('ˋ','@'))
+            outstr="%s,%s,%s,%s,%s,%s,%s\n" %(mstbid,Time,pid,tid,priority,tag.replace(',','!'), message.replace(',','!').replace('ˋ','@'))
             outfcsv.write(outstr) #Just write SEquential events, no speicific processing
             if(pid == ''): #pid defined as long in ES
                 pid=0
@@ -319,7 +320,7 @@ def process_logs(locdir,mstbid):
                 if(crashstarted ==1 ): #Crash started AND crash log continuing
                     linenum += 1
                     if (linenum == 2): #Get PID & Process
-                        mprocess = message[9:message.find(', PID:')]
+                        mprocess = message[10:message.find(', PID:')]
                         mpid = message[message.find(', PID:')+6:len(message)]
                         #print("mprocess=%s,mpid=%s" %(mprocess,mpid))
                     else: #Rest of the entries are Crash traces
@@ -416,8 +417,8 @@ def process_dropbox_logs(locdir,mstbid):
             "FOREGROUND" :mforeground,
             "CRASH_TRACE" :mcrashtrace
             }
-        esind.index(index='stb_devicecrashlog',doc_type='_doc', body=writecrstr)
-        crstr="%s,%s,%s,%s,%s,%s,%s,%s,%s\n" %(mstbid,processing_date,"NA",mpid,mflags.replace('\n',''),mpackage.replace('\n',''),mforeground.replace('\n',''),mbuildver.replace('\n','!'),mcrashtrace.replace(',','!').replace('\n','!').replace('ˈ','#'))
+            esind.index(index='stb_devicecrashlog',doc_type='_doc', body=writecrstr)
+        crstr="%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" %(mstbid,processing_date,"NA",mpid,mprocess.replace('\n',''),mflags.replace('\n',''),mpackage.replace('\n',''),mforeground.replace('\n',''),mbuildver.replace('\n','!'),mcrashtrace.replace(',','!').replace('\n','!').replace('ˈ','#'))
         outcrfcsv.write(crstr)
         outcrfcsv.flush()
            
@@ -430,12 +431,14 @@ def change_filname(PresentSTBLogs): # Change file names in this directory, if th
         filn=tarfile.replace(' ','_')
         shutil.move(tarfile,filn)
     return
+
+
 #Main Program Starts Here
 
 #Speciy locations, which will be parameters before deploying
 MainDirectory="F://Jio//Design//phase2//HugeData_01-Apr-2020//"
 MainFile="STBLogs.zip"
-write_android=1 #Make it 1, if Android log to be written to ES, by default NOT written
+write_android=0 #Make it 1, if Android log to be written to ES, by default NOT written
 write_crash=0 #By Default, crash details appended into ES
 
 #First filetimestamp to append to directories and files
@@ -445,10 +448,6 @@ filetimestamp = filetimestamp.replace(' ','_').replace(':','_')
 #print(filetimestamp)
 ### ===>NOTE: If program needs to restart from middle, assging filetimestamp value here
 #filetimestamp = 
-
-#Speciy locations, which will be parameters before deploying
-MainDirectory="F://Jio//Design//phase2//HugeData_01-Apr-2020//"
-MainFile="STBLogs.zip"
 
 if(not path.isfile(MainDirectory+MainFile)):
     print("%s+%s: File Does not Exist .. Exiting" %(MainDirectory,MainDirectory))
@@ -461,7 +460,10 @@ if ( os.path.isdir(MainDirectory+"STBLogs") or os.path.isdir(MainDirectory+'STBL
 processing_date=datetime.now().strftime('%Y-%m-%d')
 print("---->Processing date=%s" %(processing_date))
 
-esind=check_es_index()
+
+
+if(write_android == 1 or write_crash ==1): # If either to be written then only care for ElasticSearch
+    esind=check_es_index()
 
 
  
@@ -472,7 +474,15 @@ os.system(systemcmd)
 #Rename STBLogs, so that, next run of this program will go thro'
 PresentSTBLogs = MainDirectory+"STBLogs_"+filetimestamp
 shutil.move(MainDirectory+"STBLogs",PresentSTBLogs)
-
+#Open Required CSV files
+outf=PresentSTBLogs+"\\WrAndroidlog_"+filetimestamp+".csv" #This is just to write logs in sequence, an intermediate, will be discared in future
+print("outf=%s" %(outf))
+outfcsv=open(outf,'w',encoding='utf-8')
+outfcsv.write("STBID,Time,Pid,Tid,Priority,Tag,Message\n")
+outcrf=PresentSTBLogs+"\\CrAndroidlog_"+filetimestamp+".csv" #This is to Write All crash events
+outcrfcsv=open(outcrf,"w",encoding='utf-8')
+outcrfcsv.write("STBID,processing_date,CrashAt,Pid,Process,Flag,Package,Foreground,Build,CrashTrace\n")
+outcrfcsv.flush()
 
 #Now gunzip all the files in 
 os.chdir(PresentSTBLogs)
@@ -482,19 +492,11 @@ os.system(systemcmd)
 change_filname(PresentSTBLogs) # Change file names in this directory, if there is a space character in name of the file, change to "_"
 #exit(-1)
 
-#Open Required CSV files
-outf=PresentSTBLogs+"\\WrAndroidlog_"+filetimestamp+".csv" #This is just to write logs in sequence, an intermediate, will be discared in future
-print("outf=%s" %(outf))
-outfcsv=open(outf,'w')
-outfcsv.write("STBID,Time,Pid,Tid,Priority,Tag,Message\n")
-outcrf=PresentSTBLogs+"\\CrAndroidlog_"+filetimestamp+".csv" #This is to Write All crash events
-outcrfcsv=open(outcrf,"w")
-outcrfcsv.write("STBID,processing_date,CrashAt,Pid,Process,Flag,Package,Foreground,Build,CrashTrace\n")
-outcrfcsv.flush()
+
 
 processedtar=0
 for tarfile in glob.glob("*.tar"): # Process all .tar files
-#for tarfile  in ("RBLSBGF10000102.tar"): # Process all .tar files
+#for tarfile  in glob.glob("RBLSBGF10000531.tar"): # Process all .tar files
     print("=====>Processing tar file:%s" %(tarfile))
     processedtar += 1
     #print(tarfile)
