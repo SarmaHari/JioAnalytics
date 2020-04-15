@@ -1,4 +1,4 @@
-
+#09-Apr-2020: Incorporated Processing Date
 #Python Program to develop a crash events CSV 
 #Started on 02-APr-2020 after a call with SUreash on 1-Apr-2020
 
@@ -19,6 +19,64 @@ from math import ceil
 from elasticsearch import Elasticsearch
 import shutil
 import glob,os
+
+
+def check_es_index(): #Connect to ES, check if indexes exist, if not create, return ES point
+    #Open Elastic Search database  
+    es = Elasticsearch([{'host': 'localhost', 'port': 9200}])
+    if not es.ping():
+        print("ElasticSearch Not running, start and rerun")
+        exit(-1)
+    #Check if Required Index exists, if not create
+    if not(es.indices.exists('stb_androidlog')):
+        createesindexAndroidlog(es)
+    else:
+        print('Index Androidlog Already Existing')
+        
+    if not(es.indices.exists('stb_devicecrashlog')):
+        createesindexDeviceCrashlog(es)
+    else:
+        print('Index DeviceCrashLog Already Existing')
+    return(es)
+    
+def createesindexAndroidlog(db_con): #Create Android log index if not existsing
+    index_settings = {
+    'mappings':{
+     'properties' :{
+     "STBID" :{"type" :"keyword"},
+     "CRASH_TIME" : {"type": "date", "format": "yyyy-MM-dd HH:mm:ss||yyyy-MM-dd||epoch_millis" },
+     "PID" : {"type" : "long"},
+     "TID" : {"type" : "long"},
+     "PRIORITY" :{"type" :"keyword"},
+     "TAG" :{"type" :"keyword"},
+     "MESSAGE" :{"type" :"keyword"}
+      }
+    }
+    }# Ends Index Settings
+    print("Creating index AndroidLog")
+    db_con.indices.create(index = "stb_androidlog",body=index_settings)
+    return
+    
+def createesindexDeviceCrashlog(db_con): #Create Android log index if not existsing
+    index_settings = {
+    'mappings':{
+     'properties' :{
+     "STBID" :{"type" :"keyword"},
+     "PROCESSING_DATE" : {"type": "date", "format" : "YYYY-MM-DD"},
+     "CRASH_TIME" : {"type": "date", "format": "yyyy-MM-dd HH:mm:ss||yyyy-MM-dd||epoch_millis" },
+     "PID" : {"type" : "long"},
+     "PROCESS" :{"type" : "keyword"},
+     "FLAG" :{"type" : "keyword"},
+     "PACKAGE" :{"type" : "keyword"},
+     "FOREGROUND" :{"type" : "keyword"},
+     "BUILD" :{"type" : "keyword"},
+     "CRASH_TRACE" :{"type" : "keyword"}
+      }
+    }
+    }# Ends Index Settings
+    print("Creating index crashlog")
+    db_con.indices.create(index = "stb_devicecrashlog",body=index_settings)
+    return
 
 def append_year_toevent(input_dt): #Add year to event 
     input_date = input_dt[3:5]
@@ -109,6 +167,7 @@ def process_logs(locdir,mstbid):
     print("%s:Version:%s>" %(mstbid,mbuildver))
     os.chdir(locdir)
     print("STBID:%s:Directory:%s" %(mstbid,locdir))
+    wrotetoes=0 #Keep no. of records written to ES
     for txtfile in glob.glob("*.txt"): 
         inpf = open(txtfile,"r",encoding="utf8")
         #print("Processing %s" %(txtfile))
@@ -130,8 +189,14 @@ def process_logs(locdir,mstbid):
                 print("Something Wrong input_line=<%s>,k=%d,txtfile=%s>" %(input_line,k,txtfile))
                 outstr="%s,%s,%s,%s,%s,%s,%s\n" %(mstbid,"NA","NA","NA","NA","NA",input_line.encode('utf-8'))
                 outfcsv.write(outstr)
-                outfcsv.flush()
-                continue #Go to Next Recrod, Work on these cases later
+                #outfcsv.flush()
+                if (write_android ==1): # Write to ES
+                    writeesstr={
+                        "STB_ID": mstbid,
+                        "MESSAGE": "Something Wrong input_line=<%s>,k=%d,txtfile=%s>" %(input_line,k,txtfile)
+                        }
+                    esind.index(index='stb_androidlog',doc_type='_doc', body=writeesstr) #Not increasing wrotetoes as this is an exception                    
+                continue #Go to Next Recrod
            
             
             Time = append_year_toevent(input_line[0:5])+input_line[5:14]
@@ -147,28 +212,57 @@ def process_logs(locdir,mstbid):
             tag = ""
             message = ""
             tag,message = get_tag_n_message(reststr)
-            outstr="%s,%s,%s,%s,%s,%s,%s\n" %(mstbid,Time,pid,tid,priority,tag.replace(',','!'),message.replace(',','!'))
-            try:
-                outfcsv.write(outstr) #Just write SEquential events, no speicific processing
-                outcrfcsv.flush()
-            except Exception as e:
-                try:
-                    outstr="%s,%s,%s,%s,%s,%s,%s\n" %(mstbid,Time,pid,tid,priority,tag.replace(',','!').encode('utf-8'),message.replace(',','!').encode('utf-8'))
-                    outfcsv.write(outstr) #Just write SEquential events, no speicific processing
-                    outcrfcsv.flush()
-                except Exception as e:
-                    outstr="%s,%s,%s,%s,%s,%s,%s\n" %(mstbid,'NA','NA','NA','NA','NA',input_line.replace(',','!').encode('utf-8'))
-                    outfcsv.write(outstr) #Just write SEquential events, no speicific processing
-                    outcrfcsv.flush()
-                    pass
+            outstr="%s,%s,%s,%s,%s,%s,%s\n" %(mstbid,Time,pid,tid,priority,tag.replace(',','!'),message.replace(',','!').replace('ˋ','@'))
+            outfcsv.write(outstr) #Just write SEquential events, no speicific processing
+            if(pid == ''): #pid defined as long in ES
+                pid=0
+            if(tid == ''): #tid defined as long in ES
+                tid=0
+                
+            if (write_android ==1): # Write to ES
+                    mtime = Time
+                    #print("writing to ES, time=%s" %(mtime))
+                    writeesstr={
+                        "STB_ID": mstbid,
+                        "CRASH_TIME" : mtime,
+                        "PID": float(pid),
+                        "TID": float(tid),
+                        "TAG": tag,
+                        "MESSAGE": message
+                        }
+                    esind.index(index='stb_androidlog',doc_type='_doc', body=writeesstr) 
+                    wrotetoes += 1
+                    if(wrotetoes > 500): #During Development, not writing more than 500 records to ES, as it would slow down dev/testing
+                        print("---->Logged more than 500 Android Entries to ES, quitting now, Disable this conidtion in production")
+                        input("Press Any Key to continue")
+                        exit(-1)
+                    
+            # try: Directly writing to CSV and ES (if required).
+            
+            
             if (priority.find('E')<0 ):#Except E no priroty is required at this stage
                 #Verify if you need to write to csv
                 if(crashstarted == 0 ):# Neither this log entry(record) needed for parsing NOR any crash trace on-hold
                     continue
                 else: #Crash Trace is on hold, write to CSV, re-initialize variables except mstbid
                     #print("Writing to CSV1:priority=%s,k=%d,txtfile=%s" %(priority,k,txtfile))
+                    if (write_crash ==1): #Should this record be written to ES?
+                        #print("--->Writing to ES NOTE: Crash_time is NULL")
+                        #time.sleep(2)
+                        writecrstr={
+                        "STBID" : mstbid,
+                        "PROCESSING_DATE" : processing_date, 
+                        "CRASH_TIME": mcrashat,
+                        "PID" : float(mpid),
+                        "PROCESS" :mprocess,
+                        "FLAG" :"NA",
+                        "PACKAGE" :"NA",
+                        "FOREGROUND" :"NA",
+                        "CRASH_TRACE" :mcrashtrace
+                        }
+                        esind.index(index='stb_devicecrashlog',doc_type='_doc', body=writecrstr)
                     
-                    crstr = "%s,%s,%s,%s,%s,%s,%s,%s,%s\n" %(mstbid,mcrashat,mpid,mprocess,"NA","NA","NA",mbuildver.replace(',','!').replace('\n','!'),mcrashtrace.replace(',','!').replace('\n','@'))
+                    crstr = "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" %(mstbid,processing_date,mcrashat,mpid,mprocess,"NA","NA","NA",mbuildver.replace(',','!').replace('\n','!'),mcrashtrace.replace(',','!').replace('\n','@'))
                     #print("crstr=%s" %(crstr))
                     outcrfcsv.write(crstr)
                     outcrfcsv.flush()
@@ -184,8 +278,23 @@ def process_logs(locdir,mstbid):
                 if(crashstarted == 0 ):# Neither this log entry(record) needed for parsing NOR any crash trace on-hold
                     continue
                 else: #Crash Trace is on hold, write to CSV, re-initialize variables except mstbid
+                    if (write_crash ==1): #Should this record be written to ES?
+                        #print("--->Writing to ES NOTE: Crash_time is NULL")
+                        #time.sleep(2)
+                        writecrstr={
+                        "STBID" : mstbid,
+                        "PROCESSING_DATE" : processing_date, 
+                        "CRASH_TIME": mcrashat,
+                        "PID" : float(mpid),
+                        "PROCESS" :mprocess,
+                        "FLAG" :"NA",
+                        "PACKAGE" :"NA",
+                        "FOREGROUND" :"NA",
+                        "CRASH_TRACE" :mcrashtrace
+                        }
+                        esind.index(index='stb_devicecrashlog',doc_type='_doc', body=writecrstr)
                     #print("Writing to CSV1:tag=%s,k=%d,txtfile=%s" %(tag,k,txtfile))
-                    crstr = "%s,%s,%s,%s,%s,%s,%s,%s,%s\n" %(mstbid,mcrashat,mpid,mprocess,"NA","NA","NA",mbuildver.replace(',','!').replace('\n','!'),mcrashtrace.replace(',','!').replace('\n','@'))
+                    crstr = "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" %(mstbid,processing_date,mcrashat,mpid,mprocess,"NA","NA","NA",mbuildver.replace(',','!').replace('\n','!'),mcrashtrace.replace(',','!').replace('\n','@'))
                     #print("crstr=%s" %(crstr))
                     outcrfcsv.write(crstr)
                     outcrfcsv.flush()
@@ -222,7 +331,8 @@ def process_logs(locdir,mstbid):
     
 def process_dropbox_logs(locdir,mstbid):
     os.chdir(locdir)
-    print("STBID:%s:Directory:%s" %(mstbid,locdir))
+    print(" -->processing dropbox files for STBID:%s:Directory:%s" %(mstbid,locdir))
+    #time.sleep(2)
     #First Unzip if there are any gz files
     for gzfile in glob.glob("*.gz"):
         #print("%s:Uncompressing in dropbox folder %s" %(mstbid,gzfile))
@@ -276,33 +386,43 @@ def process_dropbox_logs(locdir,mstbid):
             colv=input_line[input_line.find(':')+2:len(input_line)]
             #print("--->Coln:%s,ColV:%s>" %(coln,colv))
             if(coln == 'Package' or coln == "Subject"):
-                mpackage = colv
+                mpackage = colv.replace('\n','')
             elif(coln == 'PID'):
-                mpid = colv
+                mpid = colv.replace('\n','')
             elif(coln == 'Flags'):
-                mflags=colv
+                mflags=colv.replace('\n','')
             elif(coln == 'Process'):
-                mprocess = colv
+                mprocess = colv.replace('\n','')
             elif(coln == 'Foreground'):
-                mforeground = colv
+                mforeground = colv.replace('\n','')
             elif(coln == 'Build'):
-                mbuildver = colv
+                mbuildver = colv.replace('\n','')
             else:
                 continue
         #Processing one File is over. Write to csv
-        try:
-            crstr="%s,%s,%s,%s,%s,%s,%s,%s,%s\n" %(mstbid,"NA",mpid.replace('\n',''),mprocess.replace('\n',''),mflags.replace('\n',''),mpackage.replace('\n',''),mforeground.replace('\n',''),mbuildver.replace('\n','!'),mcrashtrace.replace(',','!').replace('\n','!').replace('ˈ','#'))
-            outcrfcsv.write(crstr)
-            outcrfcsv.flush()
-        
-        except Exception as e:
-            print("%s:In Exception of Dropbox printing" %(mstbid))
-            crstr="%s,%s,%s,%s,%s,%s,%s,%s,%s\n" %(mstbid,"NA",mpid.replace('\n','!').encode('utf-8'),mprocess.replace('\n','!').encode('utf-8'),mflags.replace('\n','!').encode('utf-8'),mpackage.replace('\n','').encode('utf-8'),mforeground.replace('\n','').encode('utf-8'),mbuildver.replace('\n','').encode('utf-8'),mcrashtrace.replace(',','!').replace('\n','!').encode('utf-8'))
-            outcrfcsv.write(crstr)
-            outcrfcsv.flush()
-            continue
+        if(mpid == ''): #if blank make it zero to avoid problem writing to ES as a float
+            mpid=0
+            
+        if (write_crash ==1): #Should this record be written to ES?
+            #print("--->Writing to ES NOTE: Crash_time is NULL")
+            #time.sleep(2)
+            writecrstr={
+            "STBID" : mstbid,
+            "PROCESSING_DATE" : processing_date, 
+            "PID" : float(mpid),
+            "PROCESS" :mprocess,
+            "FLAG" :mflags,
+            "PACKAGE" :mpackage,
+            "FOREGROUND" :mforeground,
+            "CRASH_TRACE" :mcrashtrace
+            }
+        esind.index(index='stb_devicecrashlog',doc_type='_doc', body=writecrstr)
+        crstr="%s,%s,%s,%s,%s,%s,%s,%s,%s\n" %(mstbid,processing_date,"NA",mpid,mflags.replace('\n',''),mpackage.replace('\n',''),mforeground.replace('\n',''),mbuildver.replace('\n','!'),mcrashtrace.replace(',','!').replace('\n','!').replace('ˈ','#'))
+        outcrfcsv.write(crstr)
+        outcrfcsv.flush()
            
         inpf.close()
+        
     return
     
 def change_filname(PresentSTBLogs): # Change file names in this directory, if there is a space character in name of the file, change to "_"  
@@ -311,6 +431,12 @@ def change_filname(PresentSTBLogs): # Change file names in this directory, if th
         shutil.move(tarfile,filn)
     return
 #Main Program Starts Here
+
+#Speciy locations, which will be parameters before deploying
+MainDirectory="F://Jio//Design//phase2//HugeData_01-Apr-2020//"
+MainFile="STBLogs.zip"
+write_android=1 #Make it 1, if Android log to be written to ES, by default NOT written
+write_crash=0 #By Default, crash details appended into ES
 
 #First filetimestamp to append to directories and files
 filetimestamp = "%s" %(datetime.now())
@@ -330,6 +456,14 @@ if(not path.isfile(MainDirectory+MainFile)):
 if ( os.path.isdir(MainDirectory+"STBLogs") or os.path.isdir(MainDirectory+'STBLogs_'+filetimestamp)):
     print("STBLogs directories Existing.. Exit")
     exit(-1)
+ 
+#Get Processing Date
+processing_date=datetime.now().strftime('%Y-%m-%d')
+print("---->Processing date=%s" %(processing_date))
+
+esind=check_es_index()
+
+
  
 #Uncompress the main file 
 systemcmd = '7z x '+MainDirectory+MainFile
@@ -355,7 +489,7 @@ outfcsv=open(outf,'w')
 outfcsv.write("STBID,Time,Pid,Tid,Priority,Tag,Message\n")
 outcrf=PresentSTBLogs+"\\CrAndroidlog_"+filetimestamp+".csv" #This is to Write All crash events
 outcrfcsv=open(outcrf,"w")
-outcrfcsv.write("STBID,CrashAt,Pid,Process,Flag,Package,Foreground,Build,CrashTrace\n")
+outcrfcsv.write("STBID,processing_date,CrashAt,Pid,Process,Flag,Package,Foreground,Build,CrashTrace\n")
 outcrfcsv.flush()
 
 processedtar=0
@@ -404,8 +538,8 @@ for tarfile in glob.glob("*.tar"): # Process all .tar files
         
         #Processing of this stb is over
         os.chdir(PresentSTBLogs)
-        print("=====> Put Pause here")
-        #input("Count No. of Ocurrances for STB:%s.. press any Key" %(mstbid))
+        #print("=====> Put Pause here")
+        #input("Count No. of Ocurrances for STB:%s.. press any Key.. ENSURE SUBDIRECTORY REMOVABLE.. " %(mstbid))
         shutil.rmtree(PresentSTBLogs+"\\tempdir\\")#Keep Last one for sometime
         #exit(-1)
     else:
