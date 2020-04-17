@@ -152,8 +152,8 @@ def get_stb_ver(dirpath): #Get STB version from the list of ALL files in the dir
     for tarfile in glob.glob("*.tar"):
         systemcmd = "tar -xvf "+gzfile
         os.system(systemcmd)
-        
-    for input_file in glob.glob("*.txt"):
+       
+    for input_file in glob.glob("*.txt"):#Alternately use comamnd " grep "I TR069NativeService: Current version  of STB:" * | sed '1,$s/^.*I TR069NativeService: Current version  of STB: //g'|uniq
         inpf = open(input_file,"r",encoding="utf8")
         for input_line in inpf:
             if(input_line.find('I TR069NativeService:')>=0 and input_line.find('Current version  of STB:')>=0):
@@ -253,6 +253,7 @@ def process_logs(locdir,mstbid):
                         writecrstr={
                         "STBID" : mstbid,
                         "PROCESSING_DATE" : processing_date, 
+                        "BUILD" : mbuildver,
                         "CRASH_TIME": mcrashat,
                         "PID" : float(mpid),
                         "PROCESS" :mprocess,
@@ -285,6 +286,7 @@ def process_logs(locdir,mstbid):
                         writecrstr={
                         "STBID" : mstbid,
                         "PROCESSING_DATE" : processing_date, 
+                        "BUILD" : mbuildver,
                         "CRASH_TIME": mcrashat,
                         "PID" : float(mpid),
                         "PROCESS" :mprocess,
