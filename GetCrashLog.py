@@ -429,7 +429,8 @@ def process_dropbox_logs(locdir,mstbid):
     return
     
 def change_filname(PresentSTBLogs): # Change file names in this directory, if there is a space character in name of the file, change to "_"  
-    for tarfile in glob.glob("*.tar"):
+    #for tarfile in glob.glob("*.tar"):
+    for tarfile in glob.glob("*.*"):
         filn=tarfile.replace(' ','_')
         shutil.move(tarfile,filn)
     return
@@ -438,10 +439,11 @@ def change_filname(PresentSTBLogs): # Change file names in this directory, if th
 #Main Program Starts Here
 
 #Speciy locations, which will be parameters before deploying
-MainDirectory="F://Jio//Design//phase2//HugeData_01-Apr-2020//"
+#MainDirectory="F://Jio//Design//phase2//HugeData_01-Apr-2020//"
+MainDirectory="/home/ubuntu/jiodevicecrash/"
 MainFile="STBLogs.zip"
 write_android=0 #Make it 1, if Android log to be written to ES, by default NOT written
-write_crash=0 #By Default, crash details appended into ES
+write_crash=1 #By Default, crash details appended into ES
 
 #First filetimestamp to append to directories and files
 filetimestamp = "%s" %(datetime.now())
@@ -477,21 +479,32 @@ os.system(systemcmd)
 PresentSTBLogs = MainDirectory+"STBLogs_"+filetimestamp
 shutil.move(MainDirectory+"STBLogs",PresentSTBLogs)
 #Open Required CSV files
-outf=PresentSTBLogs+"\\WrAndroidlog_"+filetimestamp+".csv" #This is just to write logs in sequence, an intermediate, will be discared in future
+outf=PresentSTBLogs+"/WrAndroidlog_"+filetimestamp+".csv" #This is just to write logs in sequence, an intermediate, will be discared in future
 print("outf=%s" %(outf))
 outfcsv=open(outf,'w',encoding='utf-8')
 outfcsv.write("STBID,Time,Pid,Tid,Priority,Tag,Message\n")
-outcrf=PresentSTBLogs+"\\CrAndroidlog_"+filetimestamp+".csv" #This is to Write All crash events
+outcrf=PresentSTBLogs+"/CrAndroidlog_"+filetimestamp+".csv" #This is to Write All crash events
 outcrfcsv=open(outcrf,"w",encoding='utf-8')
 outcrfcsv.write("STBID,processing_date,CrashAt,Pid,Process,Flag,Package,Foreground,Build,CrashTrace\n")
 outcrfcsv.flush()
 
 #Now gunzip all the files in 
 os.chdir(PresentSTBLogs)
-systemcmd = "7z x "+PresentSTBLogs+"\\*.tgz"
-#systemcmd = "7z x "+PresentSTBLogs+"\\RARSBKE00063383_V4.11.tgz"
-os.system(systemcmd)
+os.system('pwd')
+#input("Before Change of file name... PRESS ANY KEY TO CONTINUE")
 change_filname(PresentSTBLogs) # Change file names in this directory, if there is a space character in name of the file, change to "_"
+#input("After Change of file name... PRESS ANY KEY TO CONTINUE")
+#systemcmd = "7z x "+PresentSTBLogs+"/RARSBKE00063383_V4.11.tgz"
+systemcmd = "7z x "+PresentSTBLogs+"/*.tgz"
+print("systemcmd=%s" %(systemcmd))
+os.system(systemcmd)
+#input("After unzipping *.tgz.. PRESS ANY KEY TO CONTINUE")
+for tgzfile in os.listdir(PresentSTBLogs):
+    if tgzfile.endswith(".tgz"): # Process all .tgz files
+        systemcmd =  "7z x \"%s\"" %(tgzfile)
+        os.system(systemcmd)
+#input("After unzipping *.tgz 2nd time.. PRESS ANY KEY TO CONTINUE")
+
 #exit(-1)
 
 
@@ -504,24 +517,28 @@ for tarfile in glob.glob("*.tar"): # Process all .tar files
     #print(tarfile)
     mstbid=tarfile[:-4]
     print("Processing STB:%s" %(mstbid))
-    if (not os.path.isdir(PresentSTBLogs+"\\tempdir")):
+    if (not os.path.isdir(PresentSTBLogs+"/tempdir")):
         print("Creating Temporary Directory to process <%s>" %(tarfile))
-        os.mkdir(PresentSTBLogs+"\\tempdir") #Note Process is in PresentSTBLogs directory
-        print("--->Trying to move:%s\\%s,%s,%s" %(PresentSTBLogs,tarfile,PresentSTBLogs,"\\tempdir"))
-        shutil.copy(PresentSTBLogs+"\\"+tarfile,PresentSTBLogs+"\\tempdir") # move the log file to temporary directory
-        systemcmd = "tar -xvf "+PresentSTBLogs+"\\tempdir\\"+tarfile
-        #systemcmd = "tar -xvf "+PresentSTBLogs+"\\tempdir\\*"
-        os.chdir(PresentSTBLogs+"\\tempdir")
+        os.mkdir(PresentSTBLogs+"/tempdir") #Note Process is in PresentSTBLogs directory
+        print("--->Trying to move:%s/%s,%s,%s" %(PresentSTBLogs,tarfile,PresentSTBLogs,"/tempdir"))
+        #shutil.copy(PresentSTBLogs+"/"+"\""+tarfile+"\"",PresentSTBLogs+"/tempdir") # move the log file to temporary directory
+        systemcmd = "mv \"%s\" tempdir" %(tarfile)
+        print("systemcmd=%s" %(systemcmd))
+        os.system(systemcmd)
+        #systemcmd = "tar -xvf "+PresentSTBLogs+"/tempdir/"+"\"+tarfile+"\"
+        systemcmd = "tar -xvf "+PresentSTBLogs+"/tempdir/*"
+        os.chdir(PresentSTBLogs+"/tempdir")
+        print("Untar command is:%s" %(systemcmd))
         os.system(systemcmd)
         
         #First process logfiles in SDCARD folder and beneth
-        os.chdir(PresentSTBLogs+"\\tempdir\\data\\data\\insight.tr069.client\\cache\\")
+        os.chdir(PresentSTBLogs+"/tempdir/data/data/insight.tr069.client/cache/")
         if( path.isfile('sdcardlog.tar.gz')): #Sometimes this file not found, then ignore
             systemcmd = '7z x sdcardlog.tar.gz'
             os.system(systemcmd)
             systemcmd = 'tar -xvf sdcardlog.tar'
             os.system(systemcmd)
-            process_logs(PresentSTBLogs+"\\tempdir\\data\\data\\insight.tr069.client\\cache\\sdcard\\log\\",mstbid)
+            process_logs(PresentSTBLogs+"/tempdir/data/data/insight.tr069.client/cache/sdcard/log/",mstbid)
             #input("%s:Process Logs Over.. Press any key")
             
             #exit(-1)
@@ -529,13 +546,13 @@ for tarfile in glob.glob("*.tar"): # Process all .tar files
             print("--->%s:sdcardlog.tar.gz Not Found" %(mstbid))
             
         #Now Process in logs in dropbox folder
-        os.chdir(PresentSTBLogs+"\\tempdir\\data\\data\\insight.tr069.client\\cache\\")
+        os.chdir(PresentSTBLogs+"/tempdir/data/data/insight.tr069.client/cache/")
         if( path.isfile('dropboxlog.tar.gz')): #if this file not found, then ignore
             systemcmd = '7z x dropboxlog.tar.gz'
             os.system(systemcmd)
             systemcmd = 'tar -xvf dropboxlog.tar'
             os.system(systemcmd)
-            process_dropbox_logs(PresentSTBLogs+"\\tempdir\\data\\data\\insight.tr069.client\\cache\\data\\system\\dropbox\\",mstbid)
+            process_dropbox_logs(PresentSTBLogs+"/tempdir/data/data/insight.tr069.client/cache/data/system/dropbox/",mstbid)
         else:
             print("%s:--->%s:dropbox.tar.gz Not Found" %(os.getcwd(),mstbid))
         #exit(-1)
@@ -544,7 +561,7 @@ for tarfile in glob.glob("*.tar"): # Process all .tar files
         os.chdir(PresentSTBLogs)
         #print("=====> Put Pause here")
         #input("Count No. of Ocurrances for STB:%s.. press any Key.. ENSURE SUBDIRECTORY REMOVABLE.. " %(mstbid))
-        shutil.rmtree(PresentSTBLogs+"\\tempdir\\")#Keep Last one for sometime
+        shutil.rmtree(PresentSTBLogs+"/tempdir/")#Keep Last one for sometime
         #exit(-1)
     else:
         print("tempdir existing..exit")
