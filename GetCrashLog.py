@@ -71,7 +71,8 @@ def createesindexDeviceCrashlog(db_con): #Create Android log index if not exists
      "PACKAGE" :{"type" : "keyword"},
      "FOREGROUND" :{"type" : "keyword"},
      "BUILD" :{"type" : "keyword"},
-     "CRASH_TRACE" :{"type" : "keyword"}
+     "CRASH_TRACE" :{"type" : "keyword"},
+     "CRASH_DESC" :{"type" : "keyword"}
       }
     }
     }# Ends Index Settings
@@ -260,11 +261,12 @@ def process_logs(locdir,mstbid):
                         "FLAG" :"NA",
                         "PACKAGE" :"NA",
                         "FOREGROUND" :"NA",
-                        "CRASH_TRACE" :mcrashtrace
+                        "CRASH_TRACE" :mcrashtrace,
+                        "CRASH_DESC":Crash_Trace_Codes(mcrashtrace)
                         }
                         esind.index(index='stb_devicecrashlog',doc_type='_doc', body=writecrstr)
                     
-                    crstr = "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" %(mstbid,processing_date,mcrashat,mpid,mprocess,"NA","NA","NA",mbuildver.replace(',','!').replace('\n','!'),mcrashtrace.replace(',','!').replace('\n','@'))
+                    crstr = "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" %(mstbid,processing_date,mcrashat,mpid,mprocess,"NA","NA","NA",mbuildver.replace(',','!').replace('\n','!'),Crash_Trace_Codes(mcrashtrace),mcrashtrace.replace(',','!').replace('\n','@'))
                     #print("crstr=%s" %(crstr))
                     outcrfcsv.write(crstr)
                     outcrfcsv.flush()
@@ -293,11 +295,12 @@ def process_logs(locdir,mstbid):
                         "FLAG" :"NA",
                         "PACKAGE" :"NA",
                         "FOREGROUND" :"NA",
-                        "CRASH_TRACE" :mcrashtrace
+                        "CRASH_TRACE" :mcrashtrace,
+                        "CRASH_DESC" :Crash_Trace_Codes(mcrashtrace)
                         }
                         esind.index(index='stb_devicecrashlog',doc_type='_doc', body=writecrstr)
                     #print("Writing to CSV1:tag=%s,k=%d,txtfile=%s" %(tag,k,txtfile))
-                    crstr = "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" %(mstbid,processing_date,mcrashat,mpid,mprocess,"NA","NA","NA",mbuildver.replace(',','!').replace('\n','!'),mcrashtrace.replace(',','!').replace('\n','@'))
+                    crstr = "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" %(mstbid,processing_date,mcrashat,mpid,mprocess,"NA","NA","NA",mbuildver.replace(',','!').replace('\n','!'),Crash_Trace_Codes(mcrashtrace),mcrashtrace.replace(',','!').replace('\n','@'))
                     #print("crstr=%s" %(crstr))
                     outcrfcsv.write(crstr)
                     outcrfcsv.flush()
@@ -417,10 +420,11 @@ def process_dropbox_logs(locdir,mstbid):
             "FLAG" :mflags,
             "PACKAGE" :mpackage,
             "FOREGROUND" :mforeground,
-            "CRASH_TRACE" :mcrashtrace
+            "CRASH_TRACE" :mcrashtrace,
+            "CRASH_DESC" : Crash_Trace_Codes(mcrashtrace)
             }
             esind.index(index='stb_devicecrashlog',doc_type='_doc', body=writecrstr)
-        crstr="%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" %(mstbid,processing_date,"NA",mpid,mprocess.replace('\n',''),mflags.replace('\n',''),mpackage.replace('\n',''),mforeground.replace('\n',''),mbuildver.replace('\n','!'),mcrashtrace.replace(',','!').replace('\n','!').replace('ˈ','#'))
+        crstr="%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" %(mstbid,processing_date,"NA",mpid,mprocess.replace('\n',''),mflags.replace('\n',''),mpackage.replace('\n',''),mforeground.replace('\n',''),mbuildver.replace('\n','!'),Crash_Trace_Codes(mcrashtrace),mcrashtrace.replace(',','!').replace('\n','!').replace('ˈ','#'))
         outcrfcsv.write(crstr)
         outcrfcsv.flush()
            
@@ -435,6 +439,20 @@ def change_filname(PresentSTBLogs): # Change file names in this directory, if th
         shutil.move(tarfile,filn)
     return
 
+def Crash_Trace_Codes(mcrashtrace): #Abbrevate CrashTraced based on Gautam's mail dated 30-Apr
+    if (mcrashtrace.find('java.lang.IllegalStateException: A migration from 5 to 1 was required but not found') >=0):
+        return('Migraion Path Not Found')
+    elif (mcrashtrace.find('java.lang.RuntimeException: Unable to start activity ComponentInfo')>=0):
+        return('Activity ComponentInfo Not Started')
+    elif (mcrashtrace.find('java.lang.RuntimeException: Unable to start receiver com.tatvic.lib.uit.AlarmReceiver')>=0):
+        return('App in Background')
+    elif (mcrashtrace.find('java.lang.RuntimeException: Unable to start receiver com.witsoftware.stb.storage.StorageManager')>=0):
+        return('Null Object Reference')
+    elif (mcrashtrace.find('jlateinit property lastSelectedAppView has not been initialized')>=0):
+        return('Last Selected App View Not Intialized')
+    else:
+        return('MISC')
+        
 
 #Main Program Starts Here
 
@@ -468,6 +486,7 @@ print("---->Processing date=%s" %(processing_date))
 
 if(write_android == 1 or write_crash ==1): # If either to be written then only care for ElasticSearch
     esind=check_es_index()
+    #input("Index Creation/Checking Done.. PRESS Any Key to Continue")
 
 
  
@@ -485,7 +504,7 @@ outfcsv=open(outf,'w',encoding='utf-8')
 outfcsv.write("STBID,Time,Pid,Tid,Priority,Tag,Message\n")
 outcrf=PresentSTBLogs+"/CrAndroidlog_"+filetimestamp+".csv" #This is to Write All crash events
 outcrfcsv=open(outcrf,"w",encoding='utf-8')
-outcrfcsv.write("STBID,processing_date,CrashAt,Pid,Process,Flag,Package,Foreground,Build,CrashTrace\n")
+outcrfcsv.write("STBID,processing_date,CrashAt,Pid,Process,Flag,Package,Foreground,Build,Crash_Desc,CrashTrace\n")
 outcrfcsv.flush()
 
 #Now gunzip all the files in 
