@@ -1,6 +1,19 @@
+#10-Jun2020: Subtracting 5.30 hours and inserting into ES
 #4-Jun-2020: Crash Info /Stack splitting into various columns
 # Started Coding on 03-Jun-2020 - Sarma
 #V2 as part of File name indicates, data format sent on 03-Jun-2020, This data format is different from earlier one
+
+def listToString(s):  
+    
+    # initialize an empty string 
+    str1 = ""  
+    
+    # traverse in the string   
+    for ele in s:  
+        str1 += ele   
+    
+    # return string   
+    return str1  
 
 def Read_Five_Column_File(file_name): #alternately use Pandas reading, when reading gets complicated with more columns or selection is required etc
     with open(file_name, 'r', encoding='utf-8') as f_input:
@@ -84,8 +97,8 @@ def check_es_index(): #Connect to ES, check if indexes exist, if not create, ret
         print("ElasticSearch Not running, start and rerun")
         exit(-1)
     #Check if Required Index exists, if not create
-    if (es.indices.exists('stb_crash_anr_v2')):
-        print("Index stb_crash_anr_v2 already exists .. append data")
+    if (es.indices.exists(index_name)):
+        print("Index %s already exists .. append data" %(index_name))
         return(es)
     createindex_stb_crash_anr_v2(es)
     return(es)
@@ -96,7 +109,8 @@ def createindex_stb_crash_anr_v2(es):
      'properties' :{
      "STBID" :{"type" :"keyword"},
      #"EVENTDATE_TIME" : {"type": "date", "format": "yyyy-MM-dd HH:mm:ss||yyyy-MM-dd||epoch_millis" },
-     "EVENTDATE_TIME" : {"type": "date", "format": "YYY-MM-DD HH:mm:ss" },
+     #"EVENTDATE_TIME" : {"type": "date", "format": "DD-MM-YYYY HH:mm:ss" },
+     "EVENTDATE_TIME" : {"type": "date", "format" : "dd-MM-yyyy HH:mm:ss||yyyy-MM-dd HH:mm:ss||yyyy-MM-dd||epoch_millis" },
      "EVENT" : {"type" : "keyword"},
      "APP_VER" : {"type" : "keyword"},
      "EVENT_TYPE" : {"type" : "keyword"},
@@ -114,7 +128,7 @@ def createindex_stb_crash_anr_v2(es):
     }
     }# Ends Index Settings
     print("Creating index crashlog")
-    es.indices.create(index = "stb_crash_anr_v2",body=index_settings)
+    es.indices.create(index = index_name,body=index_settings)
     return
     
 def insert_into_es(es,outputstb,outputdatetime,outputevent,outputver,outeventdes,outprocessname,outcrashtype,outprocessinfo,outanr_process_name,outPID,outFlags,outPackage,outForeground,outExecuting,outBuild):
@@ -137,7 +151,7 @@ def insert_into_es(es,outputstb,outputdatetime,outputevent,outputver,outeventdes
      "SUBJECT" :outExecuting,
      "BUILD" :outBuild
      }
-    es.index(index="stb_crash_anr_v2" ,doc_type='_doc', body=writedetstr)
+    es.index(index=index_name ,doc_type='_doc', body=writedetstr)
     return
 
 ## Main Program Starts from here  
@@ -149,6 +163,7 @@ import os
 import csv
 from datetime import datetime,date
 from datetime import timedelta
+from datetime import datetime
 import ast
 import json
 import fnmatch
@@ -164,9 +179,10 @@ from elasticsearch import Elasticsearch
 #exit(-1)
 
 #These parameters will be parmetrized after development over
-stb,datetime,event,version,jsonstr = Read_Five_Column_File('stbdata.csv') #Parameterize later
+stb,xdatetime,event,version,jsonstr = Read_Five_Column_File('stbdata.csv') #Parameterize later
 outcsv = open("crashlog_V2.csv","w")  #parameterize
 write_toES = 1 #Parameterize, Is writing to ES required, 1 means Yes
+index_name = 'stb_crash_anr_v2_5' #Parameterize, this is the ES index data goes into
 
 
 if (write_toES == 1): # Check if ES is running and need to create index
@@ -177,6 +193,7 @@ failcnt=0
 recordsuccess=0 #0 is succesful
 outcsv.write("STBID,EventDateTime,Event,App_Ver,EventType,Process_name,Process_Info,Crash_Header,Anr_Process_Name,Pid,Flags,Package,Foreground,Subject,Build\n")
 
+
 while (i<len(stb)):
     if (not (event[i].strip() == 'XPSE9' or event[i] == 'XPSE10')):# Need to process only two events
         print("Skipping event[%d]=%s" %(i,event[i]))
@@ -185,8 +202,7 @@ while (i<len(stb)):
         
     #Start Processinng XPSE9 & XPSE10 events
     outputstb = stb[i]
-    outputdatetime = datetime[i]
-    #print(" Within Main outputdatetime=%s" %(outputdatetime))
+    outputdatetime = (datetime.strptime(xdatetime[i],'%d-%m-%Y %H:%M:%S')-timedelta(hours=5, minutes = 30)).strftime('%d-%m-%Y %H:%M:%S') #Subtract 5.30 hours, as ES is adding 5.30 hours
     outputevent = event[i].strip()
     outputver = version[i]
     # Remove First and Last characters of Json
