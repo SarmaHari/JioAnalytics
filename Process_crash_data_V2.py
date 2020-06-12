@@ -1,3 +1,4 @@
+#12-Jun-2020: Fixed Time issue (convert to GMT and insert) AND Json string leading blank removed
 #10-Jun2020: Subtracting 5.30 hours and inserting into ES
 #4-Jun-2020: Crash Info /Stack splitting into various columns
 # Started Coding on 03-Jun-2020 - Sarma
@@ -179,10 +180,10 @@ from elasticsearch import Elasticsearch
 #exit(-1)
 
 #These parameters will be parmetrized after development over
-stb,xdatetime,event,version,jsonstr = Read_Five_Column_File('stbdata.csv') #Parameterize later
-outcsv = open("crashlog_V2.csv","w")  #parameterize
+stb,xdatetime,event,version,jsonstr = Read_Five_Column_File('stbdata_V2_7.csv') #Parameterize later
+outcsv = open("crashlog_V2_7.csv","w")  #parameterize
 write_toES = 1 #Parameterize, Is writing to ES required, 1 means Yes
-index_name = 'stb_crash_anr_v2_5' #Parameterize, this is the ES index data goes into
+index_name = 'stb_crash_anr_v2_7' #Parameterize, this is the ES index data goes into
 
 
 if (write_toES == 1): # Check if ES is running and need to create index
@@ -195,6 +196,7 @@ outcsv.write("STBID,EventDateTime,Event,App_Ver,EventType,Process_name,Process_I
 
 
 while (i<len(stb)):
+    recordsuccess=0 #0 is succesful
     if (not (event[i].strip() == 'XPSE9' or event[i] == 'XPSE10')):# Need to process only two events
         print("Skipping event[%d]=%s" %(i,event[i]))
         i=i+1
@@ -203,9 +205,11 @@ while (i<len(stb)):
     #Start Processinng XPSE9 & XPSE10 events
     outputstb = stb[i]
     outputdatetime = (datetime.strptime(xdatetime[i],'%d-%m-%Y %H:%M:%S')-timedelta(hours=5, minutes = 30)).strftime('%d-%m-%Y %H:%M:%S') #Subtract 5.30 hours, as ES is adding 5.30 hours
+    #outputdatetime = xdatetime[i]
     outputevent = event[i].strip()
     outputver = version[i]
     # Remove First and Last characters of Json
+    jsonstr[i] = jsonstr[i].strip()
     jsonstr[i] = jsonstr[i][1:]
     jsonstr[i] = jsonstr[i][:-1]
     outeventdes = 'NA'
@@ -226,12 +230,13 @@ while (i<len(stb)):
             outeventdes = data["XPS2"]
             outprocessname = data["PS21"].strip()
             outprocessinfo = data["PS22"].strip()
+        
             seppos =  outprocessinfo.find(':')
             if (seppos > -1):
                 outcrashtype = outprocessinfo[0:seppos].strip()
                 #outprocessinfo = outprocessinfo[seppos+1:].strip()
         except Exception as e:
-            #print("Record Number =%d, Problem in getting data" %(i))
+            print("%s:Record Number =%d, Problem in getting data:%s" %(xdatetime[i],i,jsonstr[i]))
             failcnt += 1
             recordsuccess = 1
             pass
