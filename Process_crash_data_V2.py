@@ -1,3 +1,4 @@
+#02-Jul-2020 : Remove leading and trailing blanks from input AND add a new column dev_free_mem_percent
 #29-Jun-2020 : Insert data of MI1 (Device Memory) inputs & outputs will have _V2_8
 #12-Jun-2020: Fixed Time issue (convert to GMT and insert) AND Json string leading blank removed
 #10-Jun2020: Subtracting 5.30 hours and inserting into ES
@@ -29,12 +30,12 @@ def Read_Six_Column_File(file_name): #alternately use Pandas reading, when readi
         i = 0
 
         for cols in csv_input:
-            x.append(cols[0])
-            y.append(cols[1])
-            p.append(cols[2])
-            q.append(cols[3])
-            r.append(cols[4])
-            s.append(cols[5])
+            x.append(cols[0].strip())
+            y.append(cols[1].strip())
+            p.append(cols[2].strip())
+            q.append(cols[3].strip())
+            r.append(cols[4].strip())
+            s.append(cols[5].strip())
             i = i + 1
         f_input.close()
 
@@ -131,7 +132,8 @@ def createindex_stb_crash_anr_v2(es):
      "SUBJECT" :{"type" : "keyword"},
      "BUILD" :{"type" : "keyword"},
      "DEV_TOT_MEM" : {"type" : "float"},
-     "DEV_FREE_MEM" : {"type" : "float"}
+     "DEV_FREE_MEM" : {"type" : "float"},
+     "DEV_FREE_MEM_PERCENT" : {"type" : "float"}
       }
     }
     }# Ends Index Settings
@@ -159,7 +161,8 @@ def insert_into_es(es,outputstb,outputdatetime,outputevent,outputver,outeventdes
      "SUBJECT" :outExecuting,
      "BUILD" :outBuild,
      "DEV_TOT_MEM" :outdev_tot_mem,
-     "DEV_FREE_MEM" :outdev_free_mem
+     "DEV_FREE_MEM" :outdev_free_mem,
+     "DEV_FREE_MEM_PERCENT":(outdev_free_mem/outdev_tot_mem)*100
      }
     es.index(index=index_name ,doc_type='_doc', body=writedetstr)
     #exit(-1)
@@ -191,11 +194,12 @@ from elasticsearch import Elasticsearch
 
 #These parameters will be parmetrized after development over
 #stbdata_V2_8 is Mi1 (device memory processing) received on 29-Jun-2020
-#stb,xdatetime,event,version,jsonstr,memstr = Read_Six_Column_File('stbdata_V2_8.csv') #Parameterize later
-jsonstr,version,stb,xdatetime,memstr,event = Read_Six_Column_File('stbdata_V2_8.csv') #Parameterize later
 outcsv = open("crashlog_V2_8.csv","w")  #parameterize
 write_toES = 1 #Parameterize, Is writing to ES required, 1 means Yes
 index_name = 'stb_crash_anr_v2_8' #Parameterize, this is the ES index data goes into
+jsonstr,version,stb,xdatetime,memstr,event = Read_Six_Column_File('stbdata_V2_8.csv') #Parameterize later
+
+
 
 
 if (write_toES == 1): # Check if ES is running and need to create index
@@ -204,7 +208,8 @@ i=0
 eventcnt=0
 failcnt=0
 recordsuccess=0 #0 is succesful
-outcsv.write("STBID,EventDateTime,Event,App_Ver,EventType,Process_name,Process_Info,Crash_Header,Anr_Process_Name,Pid,Flags,Package,Foreground,Subject,Build,dev_free_mem,dev_tot_mem\n")
+rectoes = 0
+outcsv.write("STBID,EventDateTime,Event,App_Ver,EventType,Process_name,Process_Info,Crash_Header,Anr_Process_Name,Pid,Flags,Package,Foreground,Subject,Build,dev_free_mem,dev_tot_mem,dev_free_mem_percent\n")
 
 
 while (i<len(stb)):
@@ -276,10 +281,11 @@ while (i<len(stb)):
         
     #Write Output
     if (recordsuccess == 0):
-        outstr ="%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%f,%f\n" %(outputstb,outputdatetime,outputevent,outputver,outeventdes,outprocessname.replace(',','!').replace('\n','@'),outprocessinfo.replace(',','!').replace('\n','@'),outcrashtype.replace(',','!').replace('\n','@'),outanr_process_name,outPID,outFlags,outPackage,outForeground,outExecuting,outBuild,outdev_free_mem,outdev_tot_mem) #Replace Required only for csv, while inserting into ES, will remove
+        outstr ="%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%f,%f,%f\n" %(outputstb,outputdatetime,outputevent,outputver,outeventdes,outprocessname.replace(',','!').replace('\n','@'),outprocessinfo.replace(',','!').replace('\n','@'),outcrashtype.replace(',','!').replace('\n','@'),outanr_process_name,outPID,outFlags,outPackage,outForeground,outExecuting,outBuild,outdev_free_mem,outdev_tot_mem,outdev_free_mem/outdev_tot_mem*100) #Replace Required only for csv, while inserting into ES, will remove
         outcsv.write(outstr)
         if (write_toES == 1): #Write record to Elastic Search
             insert_into_es(esind,outputstb,outputdatetime,outputevent,outputver,outeventdes,outprocessname,outcrashtype,outprocessinfo,outanr_process_name,outPID,outFlags,outPackage,outForeground,outExecuting,outBuild,outdev_free_mem,outdev_tot_mem)
+            rectoes += 1
     else: #Reset Recordstatus to success for next record
         recordsuccess = 0
     #Increment, counters as required
@@ -287,5 +293,4 @@ while (i<len(stb)):
     i += 1
 #For loop Over
 outcsv.close()
-print("Total Processed=%d, eventcnt=%d,failcnt=%d" %(i,eventcnt,failcnt))
-    
+print("Total Processed=%d, eventcnt=%d,failcnt=%d,Records written to ES=%d" %(i,eventcnt,failcnt,rectoes))
