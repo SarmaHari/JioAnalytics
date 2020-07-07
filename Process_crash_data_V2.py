@@ -1,3 +1,4 @@
+#06-Jul-2020: For <1% of ANR data, Activity data coming - ignore
 #02-Jul-2020 : Remove leading and trailing blanks from input AND add a new column dev_free_mem_percent
 #29-Jun-2020 : Insert data of MI1 (Device Memory) inputs & outputs will have _V2_8
 #12-Jun-2020: Fixed Time issue (convert to GMT and insert) AND Json string leading blank removed
@@ -78,18 +79,32 @@ def process_anr_info(input_data):
     if (seppos1 > -1):
         Foreground = input_data[seppos1+11:seppos2].strip()
         input_data = input_data[seppos2+1:]
-                              
+        
+    #<1%rows are having this extra information. Ignore, as it is <1% of Data. 06-Jul-2020  
+    seppos1 = input_data.find('Activity:')
+    seppos2 = input_data.find('\n')
+    if (seppos1 > -1):
+        #Foreground = input_data[seppos1+11:seppos2].strip()
+        input_data = input_data[seppos2+1:]
+        
+    #print("input_data=%s" %(input_data))    
     seppos1 = input_data.find('Subject:')
     seppos2 = input_data.find('\n')
     if (seppos1 > -1):
         Executing = input_data[seppos1+8:seppos2].strip()
         input_data = input_data[seppos2+1:]
+        #print("seppos1=%d,seppos2=%d,Executing = %s,input_data=%s" %(seppos1,seppos2,Executing,input_data))
+    else:
+        print("Subject Not found:%s" %(input_data))
                                     
     seppos1 = input_data.find('Build:')
     seppos2 = input_data.find('\n')
     if (seppos1 > -1):
         Build = input_data[seppos1+6:seppos2].strip()
         input_data = input_data[seppos2+1:]
+        #print("Build=%s" %(Build))
+    else:
+        print("Build Not found:%s" %(input_data))
     
     #print("anr_process_name = %s &&& input_data=%s" %(anr_process_name,input_data))
     #print("anr_process_name=%s\nPID =%s\nFlags =%s\nPackage =%s\nForeground =%s\nExecuting =%s\nBuild =%s\n" %(anr_process_name,PID,Flags,Package,Foreground,Executing,Build))
