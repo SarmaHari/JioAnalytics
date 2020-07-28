@@ -211,7 +211,7 @@ from elasticsearch import Elasticsearch
 #stbdata_V2_8 is Mi1 (device memory processing) received on 29-Jun-2020
 outcsv = open("crashlog_V2_8.csv","w")  #parameterize
 write_toES = 1 #Parameterize, Is writing to ES required, 1 means Yes
-index_name = 'stb_crash_anr_v2_8' #Parameterize, this is the ES index data goes into
+index_name = 'jiostb_2020-07-08' #Parameterize, this is the ES index data goes into
 jsonstr,version,stb,xdatetime,memstr,event = Read_Six_Column_File('stbdata_V2_8.csv') #Parameterize later
 
 
@@ -289,10 +289,16 @@ while (i<len(stb)):
             recordsuccess = 1
             pass
     else: #XPSE10
-        outeventdes = data["XPS3"]
-        outprocessname = data["PS31"].strip()
-        outprocessinfo = data["PS32"].strip()
-        outanr_process_name,outPID,outFlags,outPackage,outForeground,outExecuting,outBuild = process_anr_info(outprocessinfo)
+        try:
+            outeventdes = data["XPS3"]
+            outprocessname = data["PS31"].strip()
+            outprocessinfo = data["PS32"].strip()
+            outanr_process_name,outPID,outFlags,outPackage,outForeground,outExecuting,outBuild = process_anr_info(outprocessinfo)
+        except Exception as e:
+            print("%s:Record Number =%d, Problem in getting data:%s" %(xdatetime[i],i,jsonstr[i]))
+            failcnt += 1
+            recordsuccess = 1
+            pass
         
     #Write Output
     if (recordsuccess == 0):
