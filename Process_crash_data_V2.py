@@ -1,3 +1,4 @@
+#05-Aug-2020: Replace leading Asteriks in case of Build Fingerprint Process_Info
 #06-Jul-2020: For <1% of ANR data, Activity data coming - ignore
 #02-Jul-2020 : Remove leading and trailing blanks from input AND add a new column dev_free_mem_percent
 #29-Jun-2020 : Insert data of MI1 (Device Memory) inputs & outputs will have _V2_8
@@ -128,11 +129,7 @@ def createindex_stb_crash_anr_v2(es):
     'mappings':{
      'properties' :{
      "STBID" :{"type" :"keyword"},
-     #"EVENTDATE_TIME" : {"type": "date", "format": "yyyy-MM-dd HH:mm:ss||yyyy-MM-dd||epoch_millis" },
-     #"EVENTDATE_TIME" : {"type": "date", "format": "DD-MM-YYYY HH:mm:ss" },
-     #"EVENTDATE_TIME" : {"type": "date", "format" : "dd-MM-yyyy HH:mm:ss||yyyy-MM-dd HH:mm:ss||yyyy-MM-dd||epoch_millis" }, #This was working
-     #"EVENTDATE_TIME" : {"type": "date", "format" : "dd-MM-yyyy HH:mm:ss||yyyy-MM-dd HH:mm:ss||yyyy-MM-dd||epoch_millis" },
-     "EVENTDATE_TIME" : {"type": "date", "format" : "dd-MM-yyyy HH:mm:ss" },
+     "EVENTDATE_TIME" : {"type": "date", "format" : "dd-MM-yyyy HH:mm:ss" },#This is the one used to load however 30-Jul data does not have seconds, so below line
      "EVENT" : {"type" : "keyword"},
      "APP_VER" : {"type" : "keyword"},
      "EVENT_TYPE" : {"type" : "keyword"},
@@ -148,7 +145,9 @@ def createindex_stb_crash_anr_v2(es):
      "BUILD" :{"type" : "keyword"},
      "DEV_TOT_MEM" : {"type" : "float"},
      "DEV_FREE_MEM" : {"type" : "float"},
-     "DEV_FREE_MEM_PERCENT" : {"type" : "float"}
+     "DEV_FREE_MEM_PERCENT" : {"type" : "float"},
+     "CRASH_CASUE" : {"type" : "keyword"},
+     "CRASH_ORIGIN" : {"type": "keyword"}
       }
     }
     }# Ends Index Settings
@@ -156,7 +155,7 @@ def createindex_stb_crash_anr_v2(es):
     es.indices.create(index = index_name,body=index_settings)
     return
     
-def insert_into_es(es,outputstb,outputdatetime,outputevent,outputver,outeventdes,outprocessname,outcrashtype,outprocessinfo,outanr_process_name,outPID,outFlags,outPackage,outForeground,outExecuting,outBuild,outdev_free_mem, outdev_tot_mem):
+def insert_into_es(es,outputstb,outputdatetime,outputevent,outputver,outeventdes,outprocessname,outcrashtype,outprocessinfo,outanr_process_name,outPID,outFlags,outPackage,outForeground,outExecuting,outBuild,outdev_free_mem, outdev_tot_mem,outcrash_cause,outcrash_origin):
     #print("outputdatetime=%s" %(outputdatetime))
     writedetstr = {
     "STBID" :outputstb,
@@ -177,11 +176,20 @@ def insert_into_es(es,outputstb,outputdatetime,outputevent,outputver,outeventdes
      "BUILD" :outBuild,
      "DEV_TOT_MEM" :outdev_tot_mem,
      "DEV_FREE_MEM" :outdev_free_mem,
-     "DEV_FREE_MEM_PERCENT":(outdev_free_mem/outdev_tot_mem)*100
+     "DEV_FREE_MEM_PERCENT":(outdev_free_mem/outdev_tot_mem)*100,
+     "CRASH_CASUE" : outcrash_cause,
+     "CRASH_ORIGIN" : outcrash_origin
      }
     es.index(index=index_name ,doc_type='_doc', body=writedetstr)
     #exit(-1)
     return
+    
+def get_crashdet(inputstr):#Function to Get Cause and Origin of Crash, Refer Document shared with Jio
+    #print("inputstr=%s" %(inputstr))
+    if(inputstr.find(' more')>=0):
+        return(inputstr.split('\n')[0],"Incomplete")
+    else:
+        return(inputstr.split('\n')[0],inputstr.split('\n')[-1])
 
 ## Main Program Starts from here  
 import sys
@@ -203,16 +211,14 @@ from math import ceil
 from elasticsearch import Elasticsearch
 
 
-#process_anr_info("Process: com.jio.stb.tifextn\nPID: 20041\nFlags: 0x30c8be4d\nPackage: com.jio.stb.tifextn v1 (0.1)\nForeground: No\nSubject: executing service com.jio.stb.tifextn/.TIFExtnService\nBuild: Jio/curie/curie:9/1.6fact/20200507:user/release-keys\n\n")
-#process_anr_info("Process: com.jio.stb.catv\nPID: 26872\nFlags: 0x38c8be45\nPackage: com.jio.stb.catv v145 (1.0.25.10)\nForeground: Yes\nSubject: Broadcast of Intent { act=com.jio.stb.catv.adc.action.F flg=0x14 cmp=com.jio.stb.catv/com.jio.adc.core.UR (has extras) }\nBuild: Jio/franklin/franklin:9/2.4.3/20200421:user/dev-keys\n\n")
-#exit(-1)
+
 
 #These parameters will be parmetrized after development over
 #stbdata_V2_8 is Mi1 (device memory processing) received on 29-Jun-2020
 outcsv = open("crashlog_V2_8.csv","w")  #parameterize
 write_toES = 1 #Parameterize, Is writing to ES required, 1 means Yes
-index_name = 'jiostb_2020-07-08' #Parameterize, this is the ES index data goes into
-jsonstr,version,stb,xdatetime,memstr,event = Read_Six_Column_File('stbdata_V2_8.csv') #Parameterize later
+index_name = 'stbjio_1l' #Parameterize, this is the ES index data goes into
+jsonstr,version,stb,xdatetime,memstr,event = Read_Six_Column_File('After_Removing_Duplicates.csv') #Parameterize later
 
 
 
@@ -224,8 +230,9 @@ eventcnt=0
 failcnt=0
 recordsuccess=0 #0 is succesful
 rectoes = 0
-outcsv.write("STBID,EventDateTime,Event,App_Ver,EventType,Process_name,Process_Info,Crash_Header,Anr_Process_Name,Pid,Flags,Package,Foreground,Subject,Build,dev_free_mem,dev_tot_mem,dev_free_mem_percent\n")
+outcsv.write("STBID,EventDateTime,Event,App_Ver,EventType,Process_name,Process_Info,Crash_Header,Anr_Process_Name,Pid,Flags,Package,Foreground,Subject,Build,dev_free_mem,dev_tot_mem,dev_free_mem_percent,crash_cause,crash_origin\n")
 
+print("====>Important: 30-Jul-2020 data does not have seconds, so adding seconds, remove After JioTeam fixes this issue")
 
 while (i<len(stb)):
     recordsuccess=0 #0 is succesful
@@ -239,6 +246,7 @@ while (i<len(stb)):
     #print("xdatetime[%d]=" %(i))
     #print(xdatetime[i])
     #print(memstr[i])
+    xdatetime[i] = xdatetime[i]+':00'
     outputdatetime = (datetime.strptime(xdatetime[i],'%d-%m-%Y %H:%M:%S')-timedelta(hours=5, minutes = 30)).strftime('%d-%m-%Y %H:%M:%S') #Subtract 5.30 hours, as ES is adding 5.30 hours
    
     #print("outputdatetime=%s" %(outputdatetime))
@@ -265,20 +273,21 @@ while (i<len(stb)):
     outBuild = 'NA'
     outdev_free_mem = 0
     outdev_tot_mem = 0
+    outcrash_cause=''
+    outcrash_origin=''
     #Get Memory data
     tempmemstr = memstr[i].replace('[','').replace(']','').replace('"','')
     outdev_free_mem = float(tempmemstr[0:tempmemstr.find(',')])
     outdev_tot_mem = float(tempmemstr[tempmemstr.find(',')+1:])
     #print("free=%f,tot=%f"%(outdev_free_mem,outdev_tot_mem))
     
-    data = json.loads(jsonstr[i])
+    data = json.loads(jsonstr[i]) #Try strict=False in case Jio Python differs from our dev machine
     #If no of ifs, events increase, think of defining a function
     if (outputevent == "XPSE9"):
         try:
             outeventdes = data["XPS2"]
             outprocessname = data["PS21"].strip()
-            outprocessinfo = data["PS22"].strip()
-        
+            outprocessinfo = data["PS22"].strip().replace('*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***\n','')
             seppos =  outprocessinfo.find(':')
             if (seppos > -1):
                 outcrashtype = outprocessinfo[0:seppos].strip()
@@ -288,6 +297,7 @@ while (i<len(stb)):
             failcnt += 1
             recordsuccess = 1
             pass
+        outcrash_cause,outcrash_origin = get_crashdet(outprocessinfo)#If this statement in in try block, failure of this function will result flow to go to Exception part
     else: #XPSE10
         try:
             outeventdes = data["XPS3"]
@@ -299,13 +309,16 @@ while (i<len(stb)):
             failcnt += 1
             recordsuccess = 1
             pass
+        outcrash_cause='NA'
+        outcrash_origin='NA'
         
     #Write Output
     if (recordsuccess == 0):
-        outstr ="%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%f,%f,%f\n" %(outputstb,outputdatetime,outputevent,outputver,outeventdes,outprocessname.replace(',','!').replace('\n','@'),outprocessinfo.replace(',','!').replace('\n','@'),outcrashtype.replace(',','!').replace('\n','@'),outanr_process_name,outPID,outFlags,outPackage,outForeground,outExecuting,outBuild,outdev_free_mem,outdev_tot_mem,outdev_free_mem/outdev_tot_mem*100) #Replace Required only for csv, while inserting into ES, will remove
+        #As input is increasing, varaibles to written are increasing, break into multiplelines
+        outstr ="%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%f,%f,%f,%s,%s\n" %(outputstb,outputdatetime,outputevent,outputver,outeventdes,outprocessname.replace(',','!').replace('\n','@'),outprocessinfo.replace(',','!').replace('\n','@'),outcrashtype.replace(',','!').replace('\n','@'),outanr_process_name,outPID,outFlags,outPackage,outForeground,outExecuting,outBuild,outdev_free_mem,outdev_tot_mem,outdev_free_mem/outdev_tot_mem*100,outcrash_cause.replace(',','!').replace('\n','@'),outcrash_origin.replace(',','!').replace('\n','@')) #Replace Required only for csv, while inserting into ES, will remove
         outcsv.write(outstr)
         if (write_toES == 1): #Write record to Elastic Search
-            insert_into_es(esind,outputstb,outputdatetime,outputevent,outputver,outeventdes,outprocessname,outcrashtype,outprocessinfo,outanr_process_name,outPID,outFlags,outPackage,outForeground,outExecuting,outBuild,outdev_free_mem,outdev_tot_mem)
+            insert_into_es(esind,outputstb,outputdatetime,outputevent,outputver,outeventdes,outprocessname,outcrashtype,outprocessinfo,outanr_process_name,outPID,outFlags,outPackage,outForeground,outExecuting,outBuild,outdev_free_mem,outdev_tot_mem,outcrash_cause,outcrash_origin)
             rectoes += 1
     else: #Reset Recordstatus to success for next record
         recordsuccess = 0
