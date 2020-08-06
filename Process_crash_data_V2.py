@@ -187,7 +187,10 @@ def insert_into_es(es,outputstb,outputdatetime,outputevent,outputver,outeventdes
 def get_crashdet(inputstr):#Function to Get Cause and Origin of Crash, Refer Document shared with Jio
     #print("inputstr=%s" %(inputstr))
     if(inputstr.find(' more')>=0):
-        return(inputstr.split('\n')[0],"Incomplete")
+        if (inputstr.split('\n')[0].find('Sending non-protected broadcast')>=0):
+            return(inputstr.split('\n')[0],'Sending non-protected broadcast')
+        else:
+            return(inputstr.split('\n')[0],"Incomplete")
     else:
         return(inputstr.split('\n')[0],inputstr.split('\n')[-1])
 
@@ -217,7 +220,7 @@ from elasticsearch import Elasticsearch
 #stbdata_V2_8 is Mi1 (device memory processing) received on 29-Jun-2020
 outcsv = open("crashlog_V2_8.csv","w")  #parameterize
 write_toES = 1 #Parameterize, Is writing to ES required, 1 means Yes
-index_name = 'stbjio_1l' #Parameterize, this is the ES index data goes into
+index_name = 'jiostb_2020-07-30'  #Parameterize, this is the ES index data goes into
 jsonstr,version,stb,xdatetime,memstr,event = Read_Six_Column_File('After_Removing_Duplicates.csv') #Parameterize later
 
 
