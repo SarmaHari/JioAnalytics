@@ -146,7 +146,7 @@ def createindex_stb_crash_anr_v2(es):
      "DEV_TOT_MEM" : {"type" : "float"},
      "DEV_FREE_MEM" : {"type" : "float"},
      "DEV_FREE_MEM_PERCENT" : {"type" : "float"},
-     "CRASH_CASUE" : {"type" : "keyword"},
+     "CRASH_CAUSE" : {"type" : "keyword"},
      "CRASH_ORIGIN" : {"type": "keyword"}
       }
     }
@@ -177,7 +177,7 @@ def insert_into_es(es,outputstb,outputdatetime,outputevent,outputver,outeventdes
      "DEV_TOT_MEM" :outdev_tot_mem,
      "DEV_FREE_MEM" :outdev_free_mem,
      "DEV_FREE_MEM_PERCENT":(outdev_free_mem/outdev_tot_mem)*100,
-     "CRASH_CASUE" : outcrash_cause,
+     "CRASH_CAUSE" : outcrash_cause,
      "CRASH_ORIGIN" : outcrash_origin
      }
     es.index(index=index_name ,doc_type='_doc', body=writedetstr)
